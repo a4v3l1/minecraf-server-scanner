@@ -21,7 +21,7 @@ Minecraft Server Scanner — это приложение для поиска и 
 
 ### Для Windows
 1. **Скачайте исполняемый файл**:
-   - Перейдите в раздел [Releases](https://github.com/a4v3l1/minecraf-server-scanner/releases/tag/beta) и скачайте ` full_mcsa_ver01.zip `.
+   - Перейдите в раздел [Releases](https://github.com/a4v3l1/minecraft-server-scanner/releases/tag/beta) и скачайте ` full_mcsa_ver01.zip `.
 2. **Запустите приложение**:
    - Запустите `gui.exe`.
    - Убедитесь, что у вас есть права на запись в эту папку (для создания `scanner.log`, `favorites.json`, `config.json`, `history.db`).
@@ -46,7 +46,7 @@ Minecraft Server Scanner — это приложение для поиска и 
 
 2. **Клонируйте репозиторий**:
    ```bash
-   git clone https://github.com/a4v3l1/minecraf-server-scanner.git
+   git clone https://github.com/a4v3l1/minecraft-server-scanner.git
    cd minecraf-server-scanner
    ```
 
