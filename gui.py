@@ -22,6 +22,7 @@ logging.basicConfig(
 
 class ServerScannerGUI:
     def __init__(self, root):
+        self.total_ports = 0
         self.root = root
         self.root.title("Minecraft Server Scanner (v1 GUI)")
         # Установка размера окна
@@ -58,6 +59,10 @@ class ServerScannerGUI:
         # Вкладка для избранных серверов
         self.fav_frame = tk.Frame(self.notebook, bg=self.bg_color)
         self.notebook.add(self.fav_frame, text="Избранное")
+
+        # Вкладка для истории серверов
+        self.history_frame = tk.Frame(self.notebook, bg=self.bg_color)
+        self.notebook.add(self.history_frame, text="История")
 
         # Фоновая текстура (если есть)
         self.bg_image = None
@@ -155,6 +160,15 @@ class ServerScannerGUI:
         self.stats_label = tk.Label(self.main_frame, text="Статистика: 0 серверов, 0 портов, 0 сек", font=("Arial", 12), bg=self.bg_color, fg=self.text_color)
         self.stats_label.pack(pady=5)
 
+        self.status_label = tk.Label(
+            self.main_frame,
+            text="",
+            font=("Arial", 12),
+            bg=self.bg_color,
+            fg="blue"
+        )
+        self.status_label.pack(pady=5)
+
         # Основная рабочая область
         self.main_content = tk.PanedWindow(self.main_frame, orient=tk.HORIZONTAL, bg="#d0d0d0", sashwidth=5, sashrelief="raised")
         self.main_content.pack(fill="both", expand=True)
@@ -197,6 +211,29 @@ class ServerScannerGUI:
         self.fav_canvas.configure(yscrollcommand=self.fav_scrollbar.set)
         self.fav_canvas.pack(side="left", fill="both", expand=True)
         self.fav_scrollbar.pack(side="right", fill="y")
+
+        # История сканов (список)
+        self.history_listbox = tk.Listbox(self.history_frame, font=("Arial", 12))
+        self.history_listbox.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Кнопка для загрузки выбранного скана
+        self.btn_load_history = tk.Button(
+            self.history_frame, text="Загрузить",
+            command=self.load_selected_history,
+            font=("Arial", 12)
+        )
+        self.btn_load_history.pack(pady=5)
+
+        self.btn_rescan_history = tk.Button(
+            self.history_frame, text="Пересканировать",
+            command=self.rescan_selected_history,
+            font=("Arial", 12)
+        )
+        self.btn_rescan_history.pack(pady=5)
+
+        # Загружаем историю
+        self.history = self.load_history()
+        self.show_history()
 
         self.cards = []
         self.results = []
@@ -245,6 +282,49 @@ class ServerScannerGUI:
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось сохранить избранное: {e}")
             logging.error(f"Ошибка сохранения избранного: {e}")
+
+    def save_history(self, ip, port_range, results):
+        try:
+            entry = {
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "ip": ip,
+                "ports": port_range,
+                "servers": len(results),
+                "results": results
+            }
+            self.history.append(entry)
+            with open("history.json", "w", encoding="utf-8") as f:
+                json.dump(self.history, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            logging.error(f"Ошибка сохранения истории: {e}")
+
+    def load_history(self):
+        try:
+            with open("history.json", "r", encoding="utf-8") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return []
+        except Exception as e:
+            logging.error(f"Ошибка загрузки истории: {e}")
+            return []
+
+    def show_history(self):
+        self.history_listbox.delete(0, tk.END)
+        for entry in self.history:
+            self.history_listbox.insert(
+                tk.END,
+                f"{entry['time']} | {entry['ip']}:{entry['ports']} | {entry['servers']} серверов"
+            )
+
+    def load_selected_history(self):
+        idx = self.history_listbox.curselection()
+        if not idx:
+            messagebox.showinfo("Инфо", "Выберите запись из истории")
+            return
+        entry = self.history[idx[0]]
+        self.results = entry["results"]
+        self.filtered_results = self.results.copy()
+        self.show_results(self.filtered_results)
 
     def toggle_theme(self):
         if self.theme == "light":
@@ -365,6 +445,46 @@ class ServerScannerGUI:
             self.start_scan()
             self.root.after(self.rescan_interval, self.rescan)
 
+    def rescan_selected_history(self):
+        idx = self.history_listbox.curselection()
+        if not idx:
+            messagebox.showinfo("Инфо", "Выберите запись из истории")
+            return
+
+        entry = self.history[idx[0]]
+
+        ip = entry["ip"]
+        port_range = entry["ports"]
+
+        if "-" in port_range:
+            start_port, end_port = port_range.split("-")
+            start_port, end_port = int(start_port), int(end_port)
+        else:
+            start_port = end_port = int(port_range)
+
+        # Покажем на главной вкладке статус
+        self.status_label.config(
+            text=f"🔄 Пересканирование {ip}:{port_range}..."
+        )
+
+        # Запускаем отдельный поток
+        t = threading.Thread(
+            target=self._run_scan_thread,
+            args=(ip, start_port, end_port),
+            daemon=True
+        )
+        t.start()
+
+    def _run_scan_thread(self, ip, start_port, end_port):
+        try:
+            self.run_scan(ip, start_port, end_port)
+            self.status_label.config(
+                text=f"✅ Пересканирование завершено ({ip}:{start_port}-{end_port})"
+            )
+        except Exception as e:
+            self.status_label.config(text=f"❌ Ошибка пересканирования: {e}")
+
+
     def run_scan(self, ip, start_port, end_port):
         try:
             start_time = datetime.now()
@@ -401,6 +521,8 @@ class ServerScannerGUI:
             self.stats_label.config(text=f"Статистика: {len(self.results)} серверов, {self.total_ports} портов, {scan_time:.1f} сек")
             logging.info(f"Сканирование завершено: {len(self.results)} серверов, {self.total_ports} портов, {scan_time:.1f} сек")
             loop.close()
+            self.save_history(ip, f"{start_port}-{end_port}", self.results)
+            self.show_history()
         except Exception as e:
             self.root.after(0, lambda: messagebox.showerror("Ошибка", f"Произошла ошибка при сканировании: {e}"))
             self.root.after(0, lambda: self.btn_scan.config(state=tk.NORMAL))
